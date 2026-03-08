@@ -47,16 +47,12 @@ if errorlevel 1 (
 echo [INFO] Dependencies installed successfully.
 
 REM Start services sequentially
-echo [INFO] Starting Database Service...
-start "Database Service" cmd /c "venv\Scripts\activate.bat && python database_service.py"
-timeout /t 5 /nobreak >nul
-
 echo [INFO] Starting Backend API...
-start "Backend API" cmd /c "venv\Scripts\activate.bat && python backend_api.py"
+start "Backend API" cmd /c "venv\Scripts\activate.bat && uvicorn backend_api:app --host 127.0.0.1 --port 8000"
 timeout /t 5 /nobreak >nul
 
 echo [INFO] Starting Frontend Interface...
-start "Frontend Interface" cmd /c "venv\Scripts\activate.bat && python frontend.py"
+start "Frontend Interface" cmd /c "venv\Scripts\activate.bat && streamlit run frontend.py --server.port 8501"
 
 echo [INFO] All services started.
 pause
