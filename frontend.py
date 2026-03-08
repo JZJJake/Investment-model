@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+import time
 
 st.set_page_config(page_title="Business Matching Pipeline", layout="wide")
 
@@ -28,6 +29,72 @@ uploaded_file = st.sidebar.file_uploader("限制文件拖拽上传区", type=["x
 st.title("企业扩张动能与承载地匹配系统")
 st.markdown("通过多源异构数据与大模型驱动，实现区域禀赋与高分企业需求精准匹配。")
 
+st.markdown("---")
+st.subheader("全市场扫描控制台 (Full Market Scan Console)")
+
+if st.button("🚀 触发全市场 5000+ A股公司扫描"):
+    try:
+        headers = {}
+        if api_key:
+            headers["x-api-key"] = api_key
+
+        response = requests.post(f"{API_BASE_URL}/jobs/scan", headers=headers)
+        if response.status_code == 200:
+            st.success("已成功启动后台任务：第一阶段硬过滤 & 第二阶段定性分析。")
+        else:
+            st.error(f"启动失败: {response.text}")
+    except Exception as e:
+        st.error(f"无法连接到后端: {e}")
+
+# Streamlit placeholder for the live progress bar
+status_placeholder = st.empty()
+
+# Add a toggle or a manual refresh button if we don't want to loop infinitely
+# In this POC, we'll auto-poll until it's finished or idled out.
+def check_status():
+    try:
+        res = requests.get(f"{API_BASE_URL}/jobs/status")
+        if res.status_code == 200:
+            return res.json()
+    except:
+        pass
+    return None
+
+job_state = check_status()
+if job_state and job_state.get("status") == "Running":
+    st.info("检测到扫描任务正在运行，正在同步进度...")
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    while True:
+        current_state = check_status()
+        if not current_state:
+            break
+
+        stage = current_state.get("stage", "Unknown")
+        status = current_state.get("status")
+        processed = current_state.get("processed", 0)
+        total = current_state.get("total_companies", 0)
+        stage2_total = current_state.get("stage2_total", 0)
+
+        if "Stage 2" in stage and stage2_total > 0:
+            # Stage 2 tracking based on the high potential filtered list
+            percent = min(processed / stage2_total, 1.0)
+            progress_bar.progress(percent)
+            status_text.text(f"正在执行漏斗软数据筛选: {stage} (已完成 {processed}/{stage2_total})")
+        elif "Stage 1" in stage:
+            status_text.text(f"正在执行第一阶段硬数据筛选: 全市场 ({total}家) 宽表计算处理中...")
+            progress_bar.progress(0.1) # Dummy progress for stage 1 calculation
+
+        if status in ["Completed", "Failed", "Idle"]:
+            status_text.text(f"任务状态: {status} | 最终阶段: {stage}")
+            progress_bar.progress(1.0 if status == "Completed" else 0.0)
+            break
+
+        time.sleep(1)
+
+
+st.markdown("---")
 col1, col2 = st.columns([1, 1])
 
 with col1:

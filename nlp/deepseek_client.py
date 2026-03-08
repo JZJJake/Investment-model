@@ -16,10 +16,10 @@ class RateLimitError(Exception):
 class DeepSeek_LLM_Client:
     """Client for DeepSeek LLM for semantic extraction."""
 
-    def __init__(self):
-        self.api_key = os.getenv("DEEPSEEK_API_KEY")
+    def __init__(self, api_key: str = None):
+        self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         if not self.api_key:
-            logger.warning("DEEPSEEK_API_KEY is not set in the environment.")
+            logger.warning("DEEPSEEK_API_KEY is not set.")
         # Typically DeepSeek API endpoint or similar OpenAI compatible endpoint
         self.base_url = "https://api.deepseek.com/v1/chat/completions"
 
@@ -51,7 +51,8 @@ Input Text:
 
         # We use a mocked response for the sake of the environment if API key is not a real one
         if self.api_key == "your_deepseek_api_key_here" or not self.api_key:
-            logger.info("Using mock DeepSeek API response due to missing/dummy API key.")
+            # For demonstration we log quietly to not spam console during large processing loops
+            # logger.info("Using mock DeepSeek API response due to missing/dummy API key.")
             return {
                 "choices": [{
                     "message": {

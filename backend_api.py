@@ -9,12 +9,17 @@ from pydantic import BaseModel
 from etl.adapters import IfindAdapter, TongdaxinAdapter, GenericFinancialAdapter
 from nlp.deepseek_client import DeepSeek_LLM_Client
 from business.matching_engine import MatchingEngine
+from database.database import engine, Base
+from business.scoring_engine import TwoStageFunnel, job_tracker
 
 app = FastAPI(title="Backend API System")
 
 # Ensure required directories exist
 os.makedirs("./data/inputs", exist_ok=True)
 os.makedirs("./data/processed", exist_ok=True)
+
+# Initialize database tables
+Base.metadata.create_all(bind=engine)
 
 class FetchRequest(BaseModel):
     source: str
@@ -56,21 +61,9 @@ async def analyze_nlp(request: NlpAnalyzeRequest, x_api_key: Optional[str] = Hea
     异步封装 DeepSeek_LLM_Client，提供文本结构化服务。
     """
     try:
-        # If API key is provided via header, set it in the environment temporarily
-        # or instantiate the client with it. For simplicity, we temporarily set the env var.
-        original_key = os.environ.get("DEEPSEEK_API_KEY")
-        if x_api_key:
-            os.environ["DEEPSEEK_API_KEY"] = x_api_key
-
-        client = DeepSeek_LLM_Client()
+        # Pass the API key directly to the client
+        client = DeepSeek_LLM_Client(api_key=x_api_key)
         result = client.analyze_document(request.text)
-
-        # Restore the original key
-        if original_key is not None:
-             os.environ["DEEPSEEK_API_KEY"] = original_key
-        elif "DEEPSEEK_API_KEY" in os.environ:
-             del os.environ["DEEPSEEK_API_KEY"]
-
         return {"status": "success", "analysis": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -112,6 +105,39 @@ async def match_business(file: UploadFile = File(...)):
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Phase 7 endpoints ===
+
+@app.post("/api/v1/jobs/scan")
+async def trigger_full_market_scan(background_tasks: BackgroundTasks, x_api_key: Optional[str] = Header(None)):
+    """
+    Trigger full market scan asynchronously via BackgroundTasks.
+    """
+    if job_tracker.status == "Running":
+        raise HTTPException(status_code=400, detail="A scan is already running.")
+
+    funnel = TwoStageFunnel(api_key=x_api_key)
+
+    # In a real environment, this background task will execute the run method asynchronously.
+    # The default mock runs ~5100 companies.
+    background_tasks.add_task(funnel.run_full_market_scan, 5100)
+
+    return {"status": "success", "message": "Full market scan job started."}
+
+
+@app.get("/api/v1/jobs/status")
+async def get_job_status():
+    """
+    Poll the current status of the background scan job.
+    """
+    return {
+        "status": job_tracker.status,
+        "total_companies": job_tracker.total_companies,
+        "stage2_total": job_tracker.stage2_total,
+        "processed": job_tracker.processed,
+        "stage": job_tracker.stage
+    }
 
 if __name__ == "__main__":
     import uvicorn
